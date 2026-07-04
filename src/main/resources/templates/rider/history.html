@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>My Rides - RideShare</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/rider/dashboard}">🚗 Ride<span>Share</span></a>
+    <nav>
+        <a th:href="@{/rider/dashboard}">Book a Ride</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container">
+    <div class="card">
+        <h1>My Rides</h1>
+
+        <div th:if="${#lists.isEmpty(rides)}" class="empty-state">
+            You haven't booked any rides yet.
+        </div>
+
+        <table th:unless="${#lists.isEmpty(rides)}">
+            <thead>
+            <tr><th>ID</th><th>Date</th><th>Vehicle</th><th>Status</th><th>Fare</th><th></th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="ride : ${rides}">
+                <td th:text="'#' + ${ride.id}"></td>
+                <td th:text="${#temporals.format(ride.requestedAt, 'dd MMM, hh:mm a')}"></td>
+                <td th:text="${ride.vehicleType}"></td>
+                <td><span class="badge" th:classappend="'badge-' + ${#strings.toLowerCase(ride.status)}" th:text="${ride.status}"></span></td>
+                <td th:text="${ride.fare != null} ? '₹ ' + ${ride.fare} : '—'"></td>
+                <td><a th:href="@{'/rider/ride/' + ${ride.id}}" class="btn btn-sm btn-outline">View</a></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

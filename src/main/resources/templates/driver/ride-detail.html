@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Ride #<span th:text="${ride.id}"></span> - RideShare Driver</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/driver/dashboard}">🚗 Ride<span>Share</span> <span style="color:#94a3b8;font-weight:400;">Driver</span></a>
+    <nav>
+        <a th:href="@{/driver/dashboard}">Dashboard</a>
+        <a th:href="@{/driver/history}">My Trips</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container">
+    <div class="card">
+        <h1>Ride #<span th:text="${ride.id}"></span>
+            <span class="badge" th:classappend="'badge-' + ${#strings.toLowerCase(ride.status)}" th:text="${ride.status}"></span>
+        </h1>
+        <p class="muted" th:text="${ride.vehicleType} + ' · Requested ' + ${#temporals.format(ride.requestedAt, 'dd MMM, hh:mm a')}"></p>
+
+        <div class="alert alert-info">
+            Rider: <strong th:text="${ride.riderName}"></strong>
+        </div>
+
+        <div id="map" class="map"
+             th:data-pickup-lat="${ride.pickupLat}" th:data-pickup-lng="${ride.pickupLng}"
+             th:data-drop-lat="${ride.dropLat}" th:data-drop-lng="${ride.dropLng}"></div>
+
+        <div class="row" th:if="${ride.status.name() == 'DRIVER_ASSIGNED'}">
+            <form th:action="@{'/driver/ride/' + ${ride.id} + '/accept'}" method="post">
+                <button type="submit" class="btn btn-success btn-block">Accept Ride</button>
+            </form>
+            <form th:action="@{'/driver/ride/' + ${ride.id} + '/reject'}" method="post">
+                <button type="submit" class="btn btn-danger btn-block">Reject</button>
+            </form>
+        </div>
+
+        <div th:if="${ride.status.name() == 'ACCEPTED'}">
+            <form th:action="@{'/driver/ride/' + ${ride.id} + '/start'}" method="post">
+                <button type="submit" class="btn btn-primary btn-block">Start Trip (Rider Picked Up)</button>
+            </form>
+        </div>
+
+        <div th:if="${ride.status.name() == 'ONGOING'}">
+            <form th:action="@{'/driver/ride/' + ${ride.id} + '/complete'}" method="post">
+                <button type="submit" class="btn btn-success btn-block">Complete Trip</button>
+            </form>
+        </div>
+
+        <div th:if="${ride.status.name() == 'COMPLETED'}">
+            <h2>Trip Summary</h2>
+            <table>
+                <tr><td>Distance</td><td th:text="${ride.distanceKm} + ' km'"></td></tr>
+                <tr><td>Duration</td><td th:text="${ride.durationMin} + ' min'"></td></tr>
+                <tr><td><strong>Fare Earned</strong></td><td><strong th:text="'₹ ' + ${ride.fare}"></strong></td></tr>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const mapEl = document.getElementById('map');
+    const pickup = [parseFloat(mapEl.dataset.pickupLat), parseFloat(mapEl.dataset.pickupLng)];
+    const drop = [parseFloat(mapEl.dataset.dropLat), parseFloat(mapEl.dataset.dropLng)];
+
+    const map = L.map('map').setView(pickup, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const pickupIcon = L.divIcon({ className: '', html: '📍', iconSize: [24, 24] });
+    const dropIcon = L.divIcon({ className: '', html: '🏁', iconSize: [24, 24] });
+
+    L.marker(pickup, { icon: pickupIcon }).addTo(map).bindPopup('Pickup');
+    L.marker(drop, { icon: dropIcon }).addTo(map).bindPopup('Destination');
+    map.fitBounds([pickup, drop], { padding: [40, 40] });
+</script>
+</body>
+</html>

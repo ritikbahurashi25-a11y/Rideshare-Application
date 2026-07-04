@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Driver Dashboard - RideShare</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/driver/dashboard}">🚗 Ride<span>Share</span> <span style="color:#94a3b8;font-weight:400;">Driver</span></a>
+    <nav>
+        <span th:text="'Hi, ' + ${user.name}"></span>
+        <a th:href="@{/driver/history}">My Trips</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container" id="driverData" th:data-driver-id="${user.id}">
+    <div class="card">
+        <div class="toggle-row">
+            <div>
+                <span class="status-dot" th:classappend="${user.available} ? 'online' : 'offline'"></span>
+                <strong th:text="${user.available} ? 'You are Online' : 'You are Offline'"></strong>
+                <p class="muted" style="margin:4px 0 0;">Go online to start receiving ride requests near you.</p>
+            </div>
+            <form th:action="@{/driver/availability}" method="post">
+                <input type="hidden" name="available" th:value="${!user.available}">
+                <button type="submit" class="btn" th:classappend="${user.available} ? 'btn-danger' : 'btn-success'"
+                        th:text="${user.available} ? 'Go Offline' : 'Go Online'"></button>
+            </form>
+        </div>
+
+        <div id="map" class="map"></div>
+        <p class="muted" id="locationStatus">Waiting for your location…</p>
+    </div>
+
+    <div class="card" th:if="${activeRide != null}">
+        <h2>Active Ride #<span th:text="${activeRide.id}"></span>
+            <span class="badge" th:classappend="'badge-' + ${#strings.toLowerCase(activeRide.status)}" th:text="${activeRide.status}"></span>
+        </h2>
+        <p th:text="'Rider: ' + ${activeRide.riderName}"></p>
+        <a th:href="@{'/driver/ride/' + ${activeRide.id}}" class="btn btn-primary">Open Ride</a>
+    </div>
+
+    <div class="card empty-state" th:if="${activeRide == null and user.available}">
+        Looking for ride requests… stay online and keep this page open.
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
+<script>
+    const driverId = document.getElementById('driverData').dataset.driverId;
+    const DEFAULT_CENTER = [19.0760, 72.8777]; // Mumbai
+    const map = L.map('map').setView(DEFAULT_CENTER, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const carIcon = L.divIcon({ className: '', html: '🚗', iconSize: [26, 26] });
+    let myMarker = null;
+
+    function pushLocation(lat, lng) {
+        fetch(`/api/drivers/${driverId}/location`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat, lng })
+        }).catch(() => {});
+    }
+
+    function onPosition(pos) {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        if (!myMarker) {
+            myMarker = L.marker([lat, lng], { icon: carIcon }).addTo(map).bindPopup('You');
+            map.setView([lat, lng], 14);
+        } else {
+            myMarker.setLatLng([lat, lng]);
+        }
+        document.getElementById('locationStatus').innerText = 'Location active — updates sent automatically every few seconds.';
+        pushLocation(lat, lng);
+    }
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(onPosition, () => {
+            document.getElementById('locationStatus').innerText = 'Could not access location. Please allow location permissions.';
+        });
+        // Periodically refresh + push location (works alongside watchPosition for reliability)
+        setInterval(() => navigator.geolocation.getCurrentPosition(onPosition), 5000);
+    }
+
+    // Listen for new ride offers pushed to this driver in real time
+    const socket = new SockJS('/ws');
+    const client = new window.StompJs.Client({
+        webSocketFactory: () => socket,
+        reconnectDelay: 3000,
+        onConnect: () => {
+            client.subscribe('/topic/driver-rides.' + driverId, (msg) => {
+                const ride = JSON.parse(msg.body);
+                if (ride.status === 'DRIVER_ASSIGNED') {
+                    location.href = '/driver/ride/' + ride.id;
+                }
+            });
+        }
+    });
+    client.activate();
+</script>
+</body>
+</html>

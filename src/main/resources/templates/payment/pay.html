@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Pay for Ride #<span th:text="${ride.id}"></span></title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/rider/dashboard}">🚗 Ride<span>Share</span></a>
+    <nav>
+        <a th:href="@{/rider/history}">My Rides</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container-narrow">
+    <div class="card">
+        <h1>Checkout</h1>
+        <p class="muted">Ride #<span th:text="${ride.id}"></span> · <span th:text="${ride.vehicleType}"></span></p>
+
+        <p class="fare-amount">₹ <span th:text="${payment.amount}"></span></p>
+
+        <div class="alert alert-info">
+            This is a simulated payment for demo purposes — no real transaction occurs, and no card details are stored or sent anywhere.
+        </div>
+
+        <form th:action="@{'/payment/' + ${ride.id}}" method="post" id="payForm">
+            <div class="form-group">
+                <label>Payment Method</label>
+                <select name="method" id="methodSelect" onchange="toggleFields()">
+                    <option th:each="m : ${methods}" th:value="${m}" th:text="${m}"></option>
+                </select>
+            </div>
+
+            <div id="cardFields">
+                <div class="form-group">
+                    <label>Card Number</label>
+                    <input type="text" placeholder="4242 4242 4242 4242" maxlength="19">
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>Expiry</label>
+                        <input type="text" placeholder="MM/YY" maxlength="5">
+                    </div>
+                    <div class="form-group">
+                        <label>CVV</label>
+                        <input type="text" placeholder="123" maxlength="3">
+                    </div>
+                </div>
+            </div>
+
+            <div id="upiFields" style="display:none;">
+                <div class="form-group">
+                    <label>UPI ID</label>
+                    <input type="text" placeholder="yourname@upi">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">Pay ₹<span th:text="${payment.amount}"></span></button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function toggleFields() {
+        const method = document.getElementById('methodSelect').value;
+        document.getElementById('cardFields').style.display = (method === 'CARD') ? 'block' : 'none';
+        document.getElementById('upiFields').style.display = (method === 'UPI') ? 'block' : 'none';
+    }
+    toggleFields();
+</script>
+</body>
+</html>

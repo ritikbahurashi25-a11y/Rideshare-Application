@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Book a Ride - RideShare</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/rider/dashboard}">🚗 Ride<span>Share</span></a>
+    <nav>
+        <span th:text="'Hi, ' + ${user.name}"></span>
+        <a th:href="@{/rider/history}">My Rides</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container">
+    <div class="card">
+        <h1>Book a ride</h1>
+        <p class="muted">Click on the map to set your pickup point, then click again to set your destination.</p>
+        <div class="alert alert-error" th:if="${error}" th:text="${error}"></div>
+
+        <div class="row" style="margin-bottom:12px;">
+            <button type="button" class="btn btn-outline btn-sm" id="modePickupBtn" onclick="setMode('pickup')">📍 Set Pickup</button>
+            <button type="button" class="btn btn-outline btn-sm" id="modeDropBtn" onclick="setMode('drop')">🏁 Set Destination</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="useMyLocation()">🎯 Use My Location for Pickup</button>
+        </div>
+
+        <div id="map" class="map"></div>
+
+        <form th:action="@{/rider/book}" method="post" id="bookForm">
+            <input type="hidden" name="pickupLat" id="pickupLat">
+            <input type="hidden" name="pickupLng" id="pickupLng">
+            <input type="hidden" name="dropLat" id="dropLat">
+            <input type="hidden" name="dropLng" id="dropLng">
+
+            <div class="row">
+                <div class="form-group">
+                    <label>Pickup</label>
+                    <input type="text" id="pickupDisplay" readonly placeholder="Click map to set pickup">
+                </div>
+                <div class="form-group">
+                    <label>Destination</label>
+                    <input type="text" id="dropDisplay" readonly placeholder="Click map to set destination">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Vehicle Type</label>
+                <select name="vehicleType" id="vehicleType">
+                    <option th:each="vt : ${vehicleTypes}" th:value="${vt}" th:text="${vt}"></option>
+                </select>
+            </div>
+
+            <p class="muted" id="distancePreview"></p>
+
+            <button type="submit" class="btn btn-primary btn-block" id="submitBtn" disabled>Request Ride</button>
+        </form>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const DEFAULT_CENTER = [19.0760, 72.8777]; // Mumbai
+    const map = L.map('map').setView(DEFAULT_CENTER, 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let pickupMarker = null, dropMarker = null;
+    let mode = 'pickup';
+
+    function setMode(m) {
+        mode = m;
+        document.getElementById('modePickupBtn').classList.toggle('btn-primary', m === 'pickup');
+        document.getElementById('modeDropBtn').classList.toggle('btn-primary', m === 'drop');
+    }
+    setMode('pickup');
+
+    function reverseGeocode(lat, lng, callback) {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            .then(r => r.json())
+            .then(data => callback(data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
+            .catch(() => callback(`${lat.toFixed(5)}, ${lng.toFixed(5)}`));
+    }
+
+    function updatePreviewAndSubmitState() {
+        const ready = pickupMarker && dropMarker;
+        document.getElementById('submitBtn').disabled = !ready;
+        if (ready) {
+            const d = map.distance(pickupMarker.getLatLng(), dropMarker.getLatLng()) / 1000;
+            document.getElementById('distancePreview').innerText = 'Approx. distance: ' + d.toFixed(2) + ' km';
+        }
+    }
+
+    map.on('click', function (e) {
+        const { lat, lng } = e.latlng;
+        if (mode === 'pickup') {
+            if (pickupMarker) map.removeLayer(pickupMarker);
+            pickupMarker = L.marker([lat, lng], { title: 'Pickup' }).addTo(map).bindPopup('Pickup').openPopup();
+            document.getElementById('pickupLat').value = lat;
+            document.getElementById('pickupLng').value = lng;
+            reverseGeocode(lat, lng, (addr) => document.getElementById('pickupDisplay').value = addr);
+            setMode('drop');
+        } else {
+            if (dropMarker) map.removeLayer(dropMarker);
+            dropMarker = L.marker([lat, lng], { title: 'Destination' }).addTo(map).bindPopup('Destination').openPopup();
+            document.getElementById('dropLat').value = lat;
+            document.getElementById('dropLng').value = lng;
+            reverseGeocode(lat, lng, (addr) => document.getElementById('dropDisplay').value = addr);
+        }
+        updatePreviewAndSubmitState();
+    });
+
+    function useMyLocation() {
+        if (!navigator.geolocation) { alert('Geolocation not supported by your browser'); return; }
+        navigator.geolocation.getCurrentPosition(function (pos) {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            map.setView([lat, lng], 14);
+            if (pickupMarker) map.removeLayer(pickupMarker);
+            pickupMarker = L.marker([lat, lng], { title: 'Pickup' }).addTo(map).bindPopup('Pickup').openPopup();
+            document.getElementById('pickupLat').value = lat;
+            document.getElementById('pickupLng').value = lng;
+            reverseGeocode(lat, lng, (addr) => document.getElementById('pickupDisplay').value = addr);
+            setMode('drop');
+            updatePreviewAndSubmitState();
+        }, function () {
+            alert('Could not get your location. Please click the map instead.');
+        });
+    }
+</script>
+</body>
+</html>

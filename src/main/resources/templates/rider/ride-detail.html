@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Ride #<span th:text="${ride.id}"></span> - RideShare</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/rider/dashboard}">🚗 Ride<span>Share</span></a>
+    <nav>
+        <a th:href="@{/rider/dashboard}">Book Another</a>
+        <a th:href="@{/rider/history}">My Rides</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container"
+     id="rideData"
+     th:data-ride-id="${ride.id}"
+     th:data-status="${ride.status}"
+     th:data-driver-id="${ride.driverId}"
+     th:data-pickup-lat="${ride.pickupLat}"
+     th:data-pickup-lng="${ride.pickupLng}"
+     th:data-drop-lat="${ride.dropLat}"
+     th:data-drop-lng="${ride.dropLng}">
+
+    <div class="card">
+        <div class="row" style="align-items:center;">
+            <div>
+                <h1>Ride #<span th:text="${ride.id}"></span>
+                    <span class="badge" th:classappend="'badge-' + ${#strings.toLowerCase(ride.status)}"
+                          th:text="${ride.status}" id="statusBadge"></span>
+                </h1>
+                <p class="muted" th:text="${ride.vehicleType} + ' · Requested ' + ${#temporals.format(ride.requestedAt, 'dd MMM, hh:mm a')}"></p>
+            </div>
+        </div>
+
+        <div th:if="${ride.status.name() == 'NO_DRIVER_FOUND'}" class="alert alert-error">
+            No available driver was found nearby.
+            <form th:action="@{'/rider/ride/' + ${ride.id} + '/retry-match'}" method="post" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-primary" style="margin-left:8px;">Retry Matching</button>
+            </form>
+        </div>
+
+        <div th:if="${ride.driverId != null}" class="alert alert-info">
+            Driver: <strong th:text="${ride.driverName}"></strong> ·
+            <span th:text="${ride.vehicleNumber}"></span> ·
+            📞 <span th:text="${ride.driverPhone}"></span>
+        </div>
+
+        <div id="map" class="map"></div>
+
+        <div class="row" th:if="${ride.status.name() == 'DRIVER_ASSIGNED' || ride.status.name() == 'ACCEPTED' || ride.status.name() == 'REQUESTED'}">
+            <form th:action="@{'/rider/ride/' + ${ride.id} + '/cancel'}" method="post">
+                <button type="submit" class="btn btn-danger">Cancel Ride</button>
+            </form>
+        </div>
+
+        <div th:if="${ride.status.name() == 'COMPLETED'}">
+            <h2>Trip Summary</h2>
+            <table>
+                <tr><td>Distance</td><td th:text="${ride.distanceKm} + ' km'"></td></tr>
+                <tr><td>Duration</td><td th:text="${ride.durationMin} + ' min'"></td></tr>
+                <tr><td><strong>Fare</strong></td><td><strong th:text="'₹ ' + ${ride.fare}"></strong></td></tr>
+            </table>
+
+            <div th:if="${isPaid}" class="alert alert-success" style="margin-top:16px;">
+                ✅ Payment completed. Ref: <span th:text="${payment.transactionRef}"></span>
+            </div>
+            <a th:unless="${isPaid}" th:href="@{'/payment/' + ${ride.id}}" class="btn btn-primary btn-block" style="margin-top:16px;">
+                Pay ₹<span th:text="${ride.fare}"></span> Now
+            </a>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
+<script>
+    const dataEl = document.getElementById('rideData');
+    const rideId = dataEl.dataset.rideId;
+    let driverId = dataEl.dataset.driverId;
+    const pickup = [parseFloat(dataEl.dataset.pickupLat), parseFloat(dataEl.dataset.pickupLng)];
+    const drop = [parseFloat(dataEl.dataset.dropLat), parseFloat(dataEl.dataset.dropLng)];
+
+    const map = L.map('map').setView(pickup, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const pickupIcon = L.divIcon({ className: '', html: '📍', iconSize: [24, 24] });
+    const dropIcon = L.divIcon({ className: '', html: '🏁', iconSize: [24, 24] });
+    const carIcon = L.divIcon({ className: '', html: '🚗', iconSize: [26, 26] });
+
+    L.marker(pickup, { icon: pickupIcon }).addTo(map).bindPopup('Pickup');
+    L.marker(drop, { icon: dropIcon }).addTo(map).bindPopup('Destination');
+    map.fitBounds([pickup, drop], { padding: [40, 40] });
+
+    let driverMarker = null;
+
+    function upsertDriverMarker(lat, lng) {
+        if (!driverMarker) {
+            driverMarker = L.marker([lat, lng], { icon: carIcon }).addTo(map).bindPopup('Your driver');
+        } else {
+            driverMarker.setLatLng([lat, lng]);
+        }
+    }
+
+    // Connect to STOMP over SockJS for real-time ride + driver location updates
+    const socket = new SockJS('/ws');
+    const client = new window.StompJs.Client({
+        webSocketFactory: () => socket,
+        reconnectDelay: 3000,
+        onConnect: () => {
+            client.subscribe('/topic/ride.' + rideId, (msg) => {
+                const ride = JSON.parse(msg.body);
+                document.getElementById('statusBadge').innerText = ride.status;
+                document.getElementById('statusBadge').className = 'badge badge-' + ride.status.toLowerCase();
+                if (ride.driverId && ride.driverId != driverId) {
+                    driverId = ride.driverId;
+                    subscribeDriverLocation();
+                }
+                if (ride.status === 'COMPLETED' || ride.status === 'CANCELLED' || ride.status === 'ACCEPTED'
+                    || ride.status === 'DRIVER_ASSIGNED' || ride.status === 'ONGOING') {
+                    // reload page to reflect fare/payment/buttons for major transitions
+                    setTimeout(() => location.reload(), 800);
+                }
+            });
+            subscribeDriverLocation();
+        }
+    });
+
+    function subscribeDriverLocation() {
+        if (!driverId) return;
+        client.subscribe('/topic/driver-location.' + driverId, (msg) => {
+            const driver = JSON.parse(msg.body);
+            if (driver.currentLat && driver.currentLng) {
+                upsertDriverMarker(driver.currentLat, driver.currentLng);
+            }
+        });
+    }
+
+    client.activate();
+</script>
+</body>
+</html>

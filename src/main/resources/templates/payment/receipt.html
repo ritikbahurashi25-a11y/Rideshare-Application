@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Receipt - Ride #<span th:text="${ride.id}"></span></title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="navbar">
+    <a class="brand" th:href="@{/rider/dashboard}">🚗 Ride<span>Share</span></a>
+    <nav>
+        <a th:href="@{/rider/history}">My Rides</a>
+        <a th:href="@{/logout}">Logout</a>
+    </nav>
+</div>
+
+<div class="container-narrow">
+    <div class="card" style="text-align:center;">
+        <div style="font-size:48px;">✅</div>
+        <h1>Payment Successful</h1>
+        <p class="fare-amount">₹ <span th:text="${payment.amount}"></span></p>
+        <p class="muted" th:text="'Paid via ' + ${payment.method}"></p>
+
+        <table style="margin-top:20px; text-align:left;">
+            <tr><td>Ride ID</td><td th:text="'#' + ${ride.id}"></td></tr>
+            <tr><td>Transaction Ref</td><td th:text="${payment.transactionRef}"></td></tr>
+            <tr><td>Distance</td><td th:text="${ride.distanceKm} + ' km'"></td></tr>
+            <tr><td>Paid At</td><td th:text="${#temporals.format(payment.paidAt, 'dd MMM yyyy, hh:mm a')}"></td></tr>
+        </table>
+
+        <a th:href="@{/rider/dashboard}" class="btn btn-primary btn-block" style="margin-top:24px;">Book Another Ride</a>
+    </div>
+</div>
+</body>
+</html>
